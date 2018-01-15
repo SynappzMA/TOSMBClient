@@ -23,6 +23,7 @@
 #import <Foundation/Foundation.h>
 #import "TOSMBConstants.h"
 
+
 @class TOSMBSessionDownloadTask;
 @class TOSMBSessionUploadTask;
 
@@ -144,6 +145,12 @@
                                     progressHandler:(void (^)(uint64_t totalBytesWritten, uint64_t totalBytesExpected))progressHandler
                                   completionHandler:(void (^)(void))completionHandler
                                         failHandler:(void (^)(NSError *error))failHandler;
+
+#pragma mark - Logging
+
+typedef void (^toSMBGlobalLogger)(NSString*);
++(toSMBGlobalLogger)globalLogger;
++(void)setGlobalLogger:(toSMBGlobalLogger)globalLogger;
 
 @end
 

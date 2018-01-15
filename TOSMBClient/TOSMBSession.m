@@ -78,7 +78,8 @@
             return nil;
         }
     }
-    
+    [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                 [NSString stringWithFormat:@"hostName:%@ ipAddress:%@ user:%@", _hostName, _ipAddress, _userName]]);
     return self;
 }
 
@@ -122,6 +123,8 @@
 {
     self.userName = userName;
     self.password = password;
+    [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                 [NSString stringWithFormat:@"user:%@ pass:%@", _userName, _password.length?@"<redacted>": @"<no password provided>"]]);
 }
 
 #pragma mark - Connections/Authentication -
@@ -149,13 +152,18 @@
 
 - (NSError *)attemptConnection
 {
+    [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                 @"entered"]);
     __block NSError *error = nil;
     dispatch_sync(self.serialQueue, ^{
         error = [self attemptConnectionWithSessionPointer:self.session];
     });
         
-    if (error)
+    if (error) {
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     [NSString stringWithFormat:@"%@", error]]);
         return error;
+    }
     
     self.guest = smb_session_is_guest(self.session);
     return nil;
@@ -163,6 +171,8 @@
 
 - (NSError *)attemptConnectionWithSessionPointer:(smb_session *)session
 {
+    [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                 @"entered"]);
     //There's no point in attempting a potentially costly TCP attempt if we're not even on a local network.
     if ([self deviceIsOnWiFi] == NO) {
         return errorForErrorCode(TOSMBSessionErrorNotOnWiFi);
@@ -171,8 +181,16 @@
     // If we're connecting from a download task, and the sessions match, make sure to
     // refresh them periodically
     if (self.session == session) {
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     @"Found an existing session"]);
         if (self.lastRequestDate && [[NSDate date] timeIntervalSinceDate:self.lastRequestDate] > 60) {
+            [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                         @"Existing session expired; create a new one"]);
+            [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                         @"attempt to delete session"]);
             smb_session_destroy(self.session);
+            [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                         @"attempt to create session"]);
             self.session = smb_session_new();
             session = self.session;
             
@@ -184,27 +202,41 @@
     
     //Don't attempt another connection if we already made it through
     if (smb_session_is_guest(session) >= 0) {
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     @"already connected"]);
+        
         self.connected = YES;
         return nil;
     }
     
     //Ensure at least one piece of connection information was supplied
     if (self.ipAddress.length == 0 && self.hostName.length == 0) {
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     @"no hostname and/or ipAddress provided"]);
         return errorForErrorCode(TOSMBSessionErrorCodeUnableToResolveAddress);
     }
     
     //If only one piece of information was supplied, use NetBIOS to resolve the other
     if (self.ipAddress.length == 0 || self.hostName.length == 0) {
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     [NSString stringWithFormat:@"using netbios to resolve either ipAddress: %@ or hostName: %@", self.ipAddress, self.hostName]]);
         TONetBIOSNameService *nameService = [[TONetBIOSNameService alloc] init];
         
-        if (self.ipAddress == nil)
+        if (self.ipAddress == nil) {
             self.ipAddress = [nameService resolveIPAddressWithName:self.hostName type:TONetBIOSNameServiceTypeFileServer];
-        else
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     [NSString stringWithFormat:@"ipAddress was nil; resolved address: %@", self.ipAddress]]);
+        } else {
             self.hostName = [nameService lookupNetworkNameForIPAddress:self.ipAddress];
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     [NSString stringWithFormat:@"hostName was nil; resolved hostname to: %@", self.hostName]]);
+        }
     }
     
     //If there is STILL no IP address after the resolution, there's no chance of a successful connection
     if (self.ipAddress == nil) {
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     @"still no ipAddress provided; aborting"]);
         return errorForErrorCode(TOSMBSessionErrorCodeUnableToResolveAddress);
     }
     
@@ -216,6 +248,8 @@
     //Attempt a connection
     NSInteger result = smb_session_connect(session, hostName, addr.s_addr, SMB_TRANSPORT_TCP);
     if (result != 0) {
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     @"Still no ipAddress provided after attempting connection; aborting"]);
         return errorForErrorCode(TOSMBSessionErrorCodeUnableToConnect);
     }
     
@@ -226,14 +260,21 @@
     
     //Attempt a login. Even if we're downgraded to guest, the login call will succeed
     smb_session_set_creds(session, hostName, userName, password);
+    [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                 [NSString stringWithFormat:@"attemping session logon with user: %@, password: %@", self.userName, @"<redacted>"]]);
     if (smb_session_login(session) != 0) {
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     @"authentication failed"]);
         return errorForErrorCode(TOSMBSessionErrorCodeAuthenticationFailed);
     }
     
     if (session == self.session) {
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     @"session up and running"]);
         self.connected = YES;
     }
-    
+    [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                 @"no session was created"]);
     return nil;
 }
 
@@ -395,12 +436,22 @@
 
 #pragma mark - Upload Tasks -
 - (TOSMBSessionUploadTask *)uploadTaskForFileAtPath:(NSString *)path data:(NSData *)data progressHandler:(void (^)(uint64_t, uint64_t))progressHandler completionHandler:(void (^)(void))completionHandler failHandler:(void (^)(NSError *))failHandler {
+    [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                 [NSString stringWithFormat:@"session:%@ path:%@ data:%@ progressHandler:%@% completionHandler:%@ failHandler:%@", self?@"true":@"false",
+                                  path.length?@"true":@"false",
+                                  data.length?@"true":@"false",
+                                  progressHandler?@"true":@"false",
+                                  completionHandler?@"true":@"false",
+                                  failHandler?@"true":@"false"]]);
     TOSMBSessionUploadTask *task = [[TOSMBSessionUploadTask alloc] initWithSession:self
                                                                               path:path
                                                                               data:data
                                                                    progressHandler:progressHandler
                                                                     successHandler:completionHandler
                                                                        failHandler:failHandler];
+    
+    [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                 [NSString stringWithFormat:@"task created: %@", task?@"true":@"false"]]);
     
     self.uploadTasks = [self.uploadTasks ?: @[] arrayByAddingObject:task];
     
@@ -410,44 +461,66 @@
 #pragma mark - String Parsing -
 - (NSString *)shareNameFromPath:(NSString *)path
 {
+    [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                 [NSString stringWithFormat:@"path: %@", path]]);
     path = [path copy];
     
     //Remove any potential slashes at the start
     if ([[path substringToIndex:2] isEqualToString:@"//"]) {
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     @"removed appended //"]);
         path = [path substringFromIndex:2];
     }
     else if ([[path substringToIndex:1] isEqualToString:@"/"]) {
         path = [path substringFromIndex:1];
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     @"removed appended /"]);
     }
     
     NSRange range = [path rangeOfString:@"/"];
     
-    if (range.location != NSNotFound)
+    if (range.location != NSNotFound) {
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     @"taken substring from first /"]);
         path = [path substringWithRange:NSMakeRange(0, range.location)];
-    
+    }
+    [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                 [NSString stringWithFormat:@"final path: %@", path]]);
     return path;
 }
 
 - (NSString *)filePathExcludingSharePathFromPath:(NSString *)path
 {
+    [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                 [NSString stringWithFormat:@"path: %@", path]]);
     path = [path copy];
     
     //Remove any potential slashes at the start
     if ([[path substringToIndex:2] isEqualToString:@"//"] || [[path substringToIndex:2] isEqualToString:@"\\\\"]) {
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     @"removed appended // or \\\\ "]);
         path = [path substringFromIndex:2];
     }
     else if ([[path substringToIndex:1] isEqualToString:@"/"] || [[path substringToIndex:1] isEqualToString:@"\\"]) {
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     @"removed appended / or \\ "]);
         path = [path substringFromIndex:1];
     }
     
     NSRange range = [path rangeOfString:@"/"];
     if (range.location == NSNotFound) {
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     @"looking for \\ "]);
         range = [path rangeOfString:@"\\"];
     }
     
-    if (range.location != NSNotFound)
+    if (range.location != NSNotFound) {
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     @"taken substring from first / or \\ "]);
         path = [path substringFromIndex:range.location+1];
-    
+    }
+    [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                 [NSString stringWithFormat:@"final path : %@", path]]);
     return path;
 }
 
@@ -484,6 +557,20 @@
     _maxTaskOperationCount = maxTaskOperationCount;
     
     self.taskQueue.maxConcurrentOperationCount = maxTaskOperationCount;
+}
+
+#pragma mark Logging
+
+static toSMBGlobalLogger _globalLogger;
+
++(toSMBGlobalLogger)globalLogger
+{
+    return _globalLogger;
+}
+
++(void)setGlobalLogger:(toSMBGlobalLogger)globalLogger
+{
+    _globalLogger = globalLogger;
 }
 
 @end
