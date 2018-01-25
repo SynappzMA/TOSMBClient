@@ -115,8 +115,11 @@ static void on_entry_removed(void *p_opaque, netbios_ns_entry *entry)
 #pragma mark - Device Name / IP Resolution -
 - (NSString *)resolveIPAddressWithName:(NSString *)name type:(TONetBIOSNameServiceType)type
 {
-    if (name == nil)
+    if(!name.length) {
+        NSLog(@"Name ip address is NULL!");
         return nil;
+    }
+    
     
     struct in_addr addr;
     int result = netbios_ns_resolve(self.nameService, [name cStringUsingEncoding:NSUTF8StringEncoding], TONetBIOSNameServiceCTypeForType(type), &addr.s_addr);
@@ -124,11 +127,13 @@ static void on_entry_removed(void *p_opaque, netbios_ns_entry *entry)
         return nil;
     
     char *ipAddress = inet_ntoa(addr);
-    if (ipAddress == NULL) {
-        return nil;
+    if(ipAddress != NULL && ipAddress[0] != '\0') {
+        return [NSString stringWithCString:ipAddress encoding:NSUTF8StringEncoding];
     }
-    
-    return [NSString stringWithCString:ipAddress encoding:NSUTF8StringEncoding];
+    else {
+        NSLog(@"IP ADDRESS WAS NULL!");
+    }
+    return nil;
 }
 
 - (void)resolveIPAddressWithName:(NSString *)name type:(TONetBIOSNameServiceType)type
@@ -178,17 +183,19 @@ static void on_entry_removed(void *p_opaque, netbios_ns_entry *entry)
 
 - (NSString *)lookupNetworkNameForIPAddress:(NSString *)address
 {
-    if (address == nil)
+    if(!address.length) {
+        NSLog(@"Address string was NULL - 1!");
         return nil;
+    }
     
     struct in_addr  addr;
     inet_aton([address cStringUsingEncoding:NSASCIIStringEncoding], &addr);
     char *addressString = (char *)netbios_ns_inverse(self.nameService, addr.s_addr);
-    if (addressString == NULL) {
-        return nil;
+    if(addressString != NULL && addressString[0] != '\0') {
+        return [NSString stringWithCString:addressString encoding:NSUTF8StringEncoding];
     }
-    
-    return [NSString stringWithCString:addressString encoding:NSUTF8StringEncoding];
+    NSLog(@"Address string was NULL - 2!");
+    return nil;
 }
 
 - (void)lookupNetworkNameForIPAddress:(NSString *)address success:(void (^)(NSString *))success failure:(void (^)(void))failure

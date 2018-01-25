@@ -222,11 +222,11 @@
                                      [NSString stringWithFormat:@"using netbios to resolve either ipAddress: %@ or hostName: %@", self.ipAddress, self.hostName]]);
         TONetBIOSNameService *nameService = [[TONetBIOSNameService alloc] init];
         
-        if (self.ipAddress == nil) {
+        if ((self.ipAddress == nil || self.ipAddress.length <= 1) && self.hostName.length > 0) {
             self.ipAddress = [nameService resolveIPAddressWithName:self.hostName type:TONetBIOSNameServiceTypeFileServer];
         [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
                                      [NSString stringWithFormat:@"ipAddress was nil; resolved address: %@", self.ipAddress]]);
-        } else {
+        } else if(self.ipAddress.length > 1) {
             self.hostName = [nameService lookupNetworkNameForIPAddress:self.ipAddress];
         [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
                                      [NSString stringWithFormat:@"hostName was nil; resolved hostname to: %@", self.hostName]]);
@@ -241,15 +241,24 @@
     }
     
     //Convert the IP Address and hostname values to their C equivalents
+    if(!self.hostName.length) {
+        NSLog(@"HOST NAME WAS NULL! -3 !");
+    }
+    
     struct in_addr addr;
     inet_aton([self.ipAddress cStringUsingEncoding:NSASCIIStringEncoding], &addr);
     const char *hostName = [self.hostName cStringUsingEncoding:NSUTF8StringEncoding];
+    if(!hostName || *hostName != '\0') {
+        NSString *host = [NSString stringWithCString:hostName encoding:NSUTF8StringEncoding];
+        [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
+                                     [NSString stringWithFormat:@"Attempt connection with session with HostName:'%@' ipAddress : %@", host, self.ipAddress]]);
+    }
     
     //Attempt a connection
     NSInteger result = smb_session_connect(session, hostName, addr.s_addr, SMB_TRANSPORT_TCP);
     if (result != 0) {
         [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
-                                     @"Still no ipAddress provided after attempting connection; aborting"]);
+                                     @"Could not connect session; aborting"]);
         return errorForErrorCode(TOSMBSessionErrorCodeUnableToConnect);
     }
     
@@ -273,8 +282,6 @@
                                      @"session up and running"]);
         self.connected = YES;
     }
-    [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
-                                 @"no session was created"]);
     return nil;
 }
 
@@ -308,9 +315,15 @@
             if (shareName[strlen(shareName)-1] == '$')
                 continue;
             
-            NSString *shareNameString = [NSString stringWithCString:shareName encoding:NSUTF8StringEncoding];
-            TOSMBSessionFile *share = [[TOSMBSessionFile alloc] initWithShareName:shareNameString session:self];
-            [shareList addObject:share];
+            //Null check
+            if(shareName != NULL && shareName[0] != '\0') {
+                NSString *shareNameString = [NSString stringWithCString:shareName encoding:NSUTF8StringEncoding];
+                TOSMBSessionFile *share = [[TOSMBSessionFile alloc] initWithShareName:shareNameString session:self];
+                [shareList addObject:share];
+            }
+            else {
+                NSLog(@"SHARENAME WAS NULL!");
+            }
         }
         
         smb_share_list_destroy(list);
