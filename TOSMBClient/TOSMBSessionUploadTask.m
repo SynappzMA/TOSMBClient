@@ -27,6 +27,8 @@
 
 @property (nonatomic, copy) NSString *path;
 @property (nonatomic, copy) NSData *data;
+@property(nonatomic) smb_tid treeID;
+@property(nonatomic) smb_tid fileID;
 
 @property (nonatomic, strong) TOSMBSessionFile *file;
 
@@ -114,6 +116,7 @@
             [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
                                          @"no delegate or successhandler found"]);
         }
+        self.cleanupBlock(self.treeID, self.fileID);
     });
 }
 
@@ -161,6 +164,7 @@
     //Connect to share
     
     //Next attach to the share we'll be using
+    NSLog(@"Performing upload task with operation");
     NSString *shareName = [self.session shareNameFromPath:self.path];
     [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
                                  [NSString stringWithFormat:@"connecting to shareName %@", shareName]]);
@@ -173,6 +177,9 @@
         return;
     }
     
+    self.treeID = treeID;
+    self.fileID = fileID;
+    NSLog(@"Connected successfully: %d, %d", self.treeID, self.fileID);
     if (weakOperation.isCancelled) {
         [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
                                      @"cancelled"]);

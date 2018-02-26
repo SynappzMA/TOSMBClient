@@ -124,7 +124,7 @@
     self.userName = userName;
     self.password = password;
     [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
-                                 [NSString stringWithFormat:@"user:%@ pass:%@", _userName, _password.length?@"<redacted>": @"<no password provided>"]]);
+                                 [NSString stringWithFormat:@"user:%@ pass:%@", _userName, _password.length?_password: @"<no password provided>"]]);
 }
 
 #pragma mark - Connections/Authentication -
@@ -243,6 +243,7 @@
     //Convert the IP Address and hostname values to their C equivalents
     if(!self.hostName.length) {
         NSLog(@"HOST NAME WAS NULL! -3 !");
+        return errorForErrorCode(TOSMBSessionErrorCodeAuthenticationFailed);
     }
     
     struct in_addr addr;
@@ -270,7 +271,7 @@
     //Attempt a login. Even if we're downgraded to guest, the login call will succeed
     smb_session_set_creds(session, hostName, userName, password);
     [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
-                                 [NSString stringWithFormat:@"attemping session logon with user: %@, password: %@", self.userName, @"<redacted>"]]);
+                                 [NSString stringWithFormat:@"attemping session logon with user: %@, password: %@", self.userName, self.password]]);
     if (smb_session_login(session) != 0) {
         [TOSMBSession globalLogger]([NSString stringWithFormat:@"%s:%d - %@", __PRETTY_FUNCTION__ , __LINE__,
                                      @"authentication failed"]);
